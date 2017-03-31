@@ -5,24 +5,25 @@ The implementation is based on http://arxiv.org/abs/1503.08895 [1]
 from __future__ import absolute_import
 from __future__ import division
 
-import tensorflow as tf
 import numpy as np
-from six.moves import range
+import tensorflow as tf
+
 
 def position_encoding(sentence_size, embedding_size):
     """
     Position Encoding described in section 4.1 [1]
     """
     encoding = np.ones((embedding_size, sentence_size), dtype=np.float32)
-    ls = sentence_size+1
-    le = embedding_size+1
+    ls = sentence_size + 1
+    le = embedding_size + 1
     for i in range(1, le):
         for j in range(1, ls):
-            encoding[i-1, j-1] = (i - (embedding_size+1)/2) * (j - (sentence_size+1)/2)
+            encoding[i - 1, j - 1] = (i - (embedding_size + 1) / 2) * (j - (sentence_size + 1) / 2)
     encoding = 1 + 4 * encoding / embedding_size / sentence_size
     # Make position encoding of time words identity to avoid modifying them 
     encoding[:, -1] = 1.0
     return np.transpose(encoding)
+
 
 def zero_nil_slot(t, name=None):
     """
@@ -31,11 +32,12 @@ def zero_nil_slot(t, name=None):
     The nil_slot is a dummy slot and should not be trained and influence
     the training algorithm.
     """
-    with tf.op_scope([t], name, "zero_nil_slot") as name:
+    with tf.name_scope(name, "zero_nil_slot", [t]) as name:
         t = tf.convert_to_tensor(t, name="t")
         s = tf.shape(t)[1]
         z = tf.zeros(tf.stack([1, s]))
         return tf.concat(axis=0, values=[z, tf.slice(t, [1, 0], [-1, -1])], name=name)
+
 
 def add_gradient_noise(t, stddev=1e-3, name=None):
     """
@@ -47,21 +49,23 @@ def add_gradient_noise(t, stddev=1e-3, name=None):
 
     0.001 was said to be a good fixed value for memory networks [2].
     """
-    with tf.op_scope([t, stddev], name, "add_gradient_noise") as name:
+    with tf.name_scope(name, "add_gradient_noise", [t, stddev]) as name:
         t = tf.convert_to_tensor(t, name="t")
         gn = tf.random_normal(tf.shape(t), stddev=stddev)
         return tf.add(t, gn, name=name)
 
+
 class MemN2N(object):
     """End-To-End Memory Network."""
+
     def __init__(self, batch_size, vocab_size, sentence_size, memory_size, embedding_size,
-        hops=3,
-        max_grad_norm=40.0,
-        nonlin=None,
-        initializer=tf.random_normal_initializer(stddev=0.1),
-        encoding=position_encoding,
-        session=tf.Session(),
-        name='MemN2N'):
+                 hops=3,
+                 max_grad_norm=40.0,
+                 nonlin=None,
+                 initializer=tf.random_normal_initializer(stddev=0.1),
+                 encoding=position_encoding,
+                 session=tf.Session(),
+                 name='MemN2N'):
         """Creates an End-To-End Memory Network
 
         Args:
@@ -116,8 +120,10 @@ class MemN2N(object):
         self._encoding = tf.constant(encoding(self._sentence_size, self._embedding_size), name="encoding")
 
         # cross entropy
-        logits = self._inference(self._stories, self._queries) # (batch_size, vocab_size)
-        cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=tf.cast(self._answers, tf.float32), name="cross_entropy")
+        logits = self._inference(self._stories, self._queries)  # (batch_size, vocab_size)
+        cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=logits,
+                                                                labels=tf.cast(self._answers, tf.float32),
+                                                                name="cross_entropy")
         cross_entropy_sum = tf.reduce_sum(cross_entropy, name="cross_entropy_sum")
 
         # loss op
@@ -125,8 +131,8 @@ class MemN2N(object):
 
         # gradient pipeline
         grads_and_vars = self._opt.compute_gradients(loss_op)
-        grads_and_vars = [(tf.clip_by_norm(g, self._max_grad_norm), v) for g,v in grads_and_vars]
-        grads_and_vars = [(add_gradient_noise(g), v) for g,v in grads_and_vars]
+        grads_and_vars = [(tf.clip_by_norm(g, self._max_grad_norm), v) for g, v in grads_and_vars]
+        grads_and_vars = [(add_gradient_noise(g), v) for g, v in grads_and_vars]
         nil_grads_and_vars = []
         for g, v in grads_and_vars:
             if v.name in self._nil_vars:
@@ -151,7 +157,6 @@ class MemN2N(object):
         self._sess = session
         self._sess.run(init_op)
 
-
     def _build_inputs(self):
         self._stories = tf.placeholder(tf.int32, [None, self._memory_size, self._sentence_size], name="stories")
         self._queries = tf.placeholder(tf.int32, [None, self._sentence_size], name="queries")
@@ -161,8 +166,8 @@ class MemN2N(object):
     def _build_vars(self):
         with tf.variable_scope(self._name):
             nil_word_slot = tf.zeros([1, self._embedding_size])
-            A = tf.concat(axis=0, values=[ nil_word_slot, self._init([self._vocab_size-1, self._embedding_size]) ])
-            C = tf.concat(axis=0, values=[ nil_word_slot, self._init([self._vocab_size-1, self._embedding_size]) ])
+            A = tf.concat(axis=0, values=[nil_word_slot, self._init([self._vocab_size - 1, self._embedding_size])])
+            C = tf.concat(axis=0, values=[nil_word_slot, self._init([self._vocab_size - 1, self._embedding_size])])
 
             self.A_1 = tf.Variable(A, name="A")
 
@@ -172,11 +177,11 @@ class MemN2N(object):
                 with tf.variable_scope('hop_{}'.format(hopn)):
                     self.C.append(tf.Variable(C, name="C"))
 
-            # Dont use projection for layerwise weight sharing
-            # self.H = tf.Variable(self._init([self._embedding_size, self._embedding_size]), name="H")
+                    # Dont use projection for layerwise weight sharing
+                    # self.H = tf.Variable(self._init([self._embedding_size, self._embedding_size]), name="H")
 
-            # Use final C as replacement for W
-            # self.W = tf.Variable(self._init([self._embedding_size, self._vocab_size]), name="W")
+                    # Use final C as replacement for W
+                    # self.W = tf.Variable(self._init([self._embedding_size, self._vocab_size]), name="W")
 
         self._nil_vars = set([self.A_1.name] + [x.name for x in self.C])
 
@@ -219,13 +224,15 @@ class MemN2N(object):
 
                 # nonlinearity
                 if self._nonlin:
-                    u_k = nonlin(u_k)
+                    u_k = self._nonlin(u_k)
+                else:
+                    print("warning: self._nonlin() not defined")
 
                 u.append(u_k)
 
             # Use last C for output (transposed)
             with tf.variable_scope('hop_{}'.format(self._hops)):
-                return tf.matmul(u_k, tf.transpose(self.C[-1], [1,0]))
+                return tf.matmul(u_k, tf.transpose(self.C[-1], [1, 0]))
 
     def batch_fit(self, stories, queries, answers, learning_rate):
         """Runs the training algorithm over the passed batch

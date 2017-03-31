@@ -2,7 +2,9 @@ from __future__ import absolute_import
 
 import os
 import re
+
 import numpy as np
+
 
 def load_task(data_dir, task_id, only_supporting=False):
     '''Load the nth task. There are 20 tasks in total.
@@ -20,12 +22,13 @@ def load_task(data_dir, task_id, only_supporting=False):
     test_data = get_stories(test_file, only_supporting)
     return train_data, test_data
 
+
 def tokenize(sent):
     '''Return the tokens of a sentence including punctuation.
     >>> tokenize('Bob dropped the apple. Where is the apple?')
     ['Bob', 'dropped', 'the', 'apple', '.', 'Where', 'is', 'the', 'apple', '?']
     '''
-    return [x.strip() for x in re.split('(\W+)?', sent) if x.strip()]
+    return [x.strip() for x in re.split('(\W+)', sent) if x.strip()]
 
 
 def parse_stories(lines, only_supporting=False):
@@ -40,10 +43,10 @@ def parse_stories(lines, only_supporting=False):
         nid = int(nid)
         if nid == 1:
             story = []
-        if '\t' in line: # question
+        if '\t' in line:  # question
             q, a, supporting = line.split('\t')
             q = tokenize(q)
-            #a = tokenize(a)
+            # a = tokenize(a)
             # answer is one vocab word even if it's actually multiple words
             a = [a]
             substory = None
@@ -62,7 +65,7 @@ def parse_stories(lines, only_supporting=False):
 
             data.append((substory, q, a))
             story.append('')
-        else: # regular sentence
+        else:  # regular sentence
             # remove periods
             sent = tokenize(line)
             if sent[-1] == ".":
@@ -77,6 +80,7 @@ def get_stories(f, only_supporting=False):
     '''
     with open(f) as f:
         return parse_stories(f.readlines(), only_supporting=only_supporting)
+
 
 def vectorize_data(data, word_idx, sentence_size, memory_size):
     """
@@ -114,7 +118,7 @@ def vectorize_data(data, word_idx, sentence_size, memory_size):
         lq = max(0, sentence_size - len(query))
         q = [word_idx[w] for w in query] + [0] * lq
 
-        y = np.zeros(len(word_idx) + 1) # 0 is reserved for nil word
+        y = np.zeros(len(word_idx) + 1)  # 0 is reserved for nil word
         for a in answer:
             y[word_idx[a]] = 1
 

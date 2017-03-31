@@ -3,15 +3,17 @@ Download tasks from facebook.ai/babi """
 from __future__ import absolute_import
 from __future__ import print_function
 
-from data_utils import load_task, vectorize_data
-from sklearn import cross_validation, metrics
-from memn2n import MemN2N
+from functools import reduce
 from itertools import chain
-from six.moves import range, reduce
 
-import tensorflow as tf
 import numpy as np
 import pandas as pd
+import tensorflow as tf
+from sklearn import metrics
+from sklearn.model_selection import train_test_split
+
+from data_utils import load_task, vectorize_data
+from memn2n import MemN2N
 
 tf.flags.DEFINE_float("learning_rate", 0.01, "Learning rate for Adam Optimizer.")
 tf.flags.DEFINE_float("anneal_rate", 15, "Number of epochs between halving the learnign rate.")
@@ -24,7 +26,7 @@ tf.flags.DEFINE_integer("epochs", 60, "Number of epochs to train for.")
 tf.flags.DEFINE_integer("embedding_size", 40, "Embedding size for embedding matrices.")
 tf.flags.DEFINE_integer("memory_size", 50, "Maximum size of memory.")
 tf.flags.DEFINE_integer("random_state", None, "Random state.")
-tf.flags.DEFINE_string("data_dir", "data/tasks_1-20_v1-2/en/", "Directory containing bAbI tasks")
+tf.flags.DEFINE_string("data_dir", "memn2n/data/tasks_1-20_v1-2/en/", "Directory containing bAbI tasks")
 tf.flags.DEFINE_string("output_file", "scores.csv", "Name of output file for final bAbI accuracy scores.")
 FLAGS = tf.flags.FLAGS
 # load all train/test data
@@ -40,17 +42,17 @@ vocab = sorted(reduce(lambda x, y: x | y, (set(list(chain.from_iterable(s)) + q 
 word_idx = dict((c, i + 1) for i, c in enumerate(vocab))
 
 max_story_size = max(map(len, (s for s, _, _ in data)))
-mean_story_size = int(np.mean([ len(s) for s, _, _ in data ]))
+mean_story_size = int(np.mean([len(s) for s, _, _ in data]))
 sentence_size = max(map(len, chain.from_iterable(s for s, _, _ in data)))
 query_size = max(map(len, (q for _, q, _ in data)))
 memory_size = min(FLAGS.memory_size, max_story_size)
 
 # Add time words/indexes
 for i in range(memory_size):
-    word_idx['time{}'.format(i+1)] = 'time{}'.format(i+1)
+    word_idx['time{}'.format(i + 1)] = 'time{}'.format(i + 1)
 
-vocab_size = len(word_idx) + 1 # +1 for nil word
-sentence_size = max(query_size, sentence_size) # for the position
+vocab_size = len(word_idx) + 1  # +1 for nil word
+sentence_size = max(query_size, sentence_size)  # for the position
 sentence_size += 1  # +1 for time words
 
 print("Longest sentence length", sentence_size)
@@ -66,7 +68,7 @@ trainA = []
 valA = []
 for task in train:
     S, Q, A = vectorize_data(task, word_idx, sentence_size, memory_size)
-    ts, vs, tq, vq, ta, va = cross_validation.train_test_split(S, Q, A, test_size=0.1, random_state=FLAGS.random_state)
+    ts, vs, tq, vq, ta, va = train_test_split(S, Q, A, test_size=0.1, random_state=FLAGS.random_state)
     trainS.append(ts)
     trainQ.append(tq)
     trainA.append(ta)
@@ -74,12 +76,12 @@ for task in train:
     valQ.append(vq)
     valA.append(va)
 
-trainS = reduce(lambda a,b : np.vstack((a,b)), (x for x in trainS))
-trainQ = reduce(lambda a,b : np.vstack((a,b)), (x for x in trainQ))
-trainA = reduce(lambda a,b : np.vstack((a,b)), (x for x in trainA))
-valS = reduce(lambda a,b : np.vstack((a,b)), (x for x in valS))
-valQ = reduce(lambda a,b : np.vstack((a,b)), (x for x in valQ))
-valA = reduce(lambda a,b : np.vstack((a,b)), (x for x in valA))
+trainS = reduce(lambda a, b: np.vstack((a, b)), (x for x in trainS))
+trainQ = reduce(lambda a, b: np.vstack((a, b)), (x for x in trainQ))
+trainA = reduce(lambda a, b: np.vstack((a, b)), (x for x in trainA))
+valS = reduce(lambda a, b: np.vstack((a, b)), (x for x in valS))
+valQ = reduce(lambda a, b: np.vstack((a, b)), (x for x in valQ))
+valA = reduce(lambda a, b: np.vstack((a, b)), (x for x in valA))
 
 testS, testQ, testA = vectorize_data(list(chain.from_iterable(test)), word_idx, sentence_size, memory_size)
 
@@ -103,13 +105,13 @@ tf.set_random_seed(FLAGS.random_state)
 batch_size = FLAGS.batch_size
 
 # This avoids feeding 1 task after another, instead each batch has a random sampling of tasks
-batches = zip(range(0, n_train-batch_size, batch_size), range(batch_size, n_train, batch_size))
-batches = [(start, end) for start,end in batches]
+batches = zip(range(0, n_train - batch_size, batch_size), range(batch_size, n_train, batch_size))
+batches = [(start, end) for start, end in batches]
 
 with tf.Session() as sess:
     model = MemN2N(batch_size, vocab_size, sentence_size, memory_size, FLAGS.embedding_size, session=sess,
                    hops=FLAGS.hops, max_grad_norm=FLAGS.max_grad_norm)
-    for i in range(1, FLAGS.epochs+1):
+    for i in range(1, FLAGS.epochs + 1):
         # Stepped learning rate
         if i - 1 <= FLAGS.anneal_stop_epoch:
             anneal = 2.0 ** ((i - 1) // FLAGS.anneal_rate)
@@ -128,8 +130,8 @@ with tf.Session() as sess:
 
         if i % FLAGS.evaluation_interval == 0:
             train_accs = []
-            for start in range(0, n_train, n_train/20):
-                end = start + n_train/20
+            for start in range(0, n_train, n_train / 20):
+                end = start + n_train / 20
                 s = trainS[start:end]
                 q = trainQ[start:end]
                 pred = model.predict(s, q)
@@ -137,8 +139,8 @@ with tf.Session() as sess:
                 train_accs.append(acc)
 
             val_accs = []
-            for start in range(0, n_val, n_val/20):
-                end = start + n_val/20
+            for start in range(0, n_val, n_val / 20):
+                end = start + n_val / 20
                 s = valS[start:end]
                 q = valQ[start:end]
                 pred = model.predict(s, q)
@@ -146,8 +148,8 @@ with tf.Session() as sess:
                 val_accs.append(acc)
 
             test_accs = []
-            for start in range(0, n_test, n_test/20):
-                end = start + n_test/20
+            for start in range(0, n_test, n_test / 20):
+                end = start + n_test / 20
                 s = testS[start:end]
                 q = testQ[start:end]
                 pred = model.predict(s, q)
@@ -172,9 +174,9 @@ with tf.Session() as sess:
         if i == FLAGS.epochs:
             print('Writing final results to {}'.format(FLAGS.output_file))
             df = pd.DataFrame({
-            'Training Accuracy': train_accs,
-            'Validation Accuracy': val_accs,
-            'Testing Accuracy': test_accs
+                'Training Accuracy': train_accs,
+                'Validation Accuracy': val_accs,
+                'Testing Accuracy': test_accs
             }, index=range(1, 21))
             df.index.name = 'Task'
             df.to_csv(FLAGS.output_file)
